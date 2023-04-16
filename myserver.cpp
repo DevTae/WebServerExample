@@ -1,20 +1,75 @@
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
+#include <map>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
+#include <sstream> // string stream
+#include <fstream> // file stream
 #define BACKLOG 10 // how many pending connections queue will hold
 
 using namespace std;
+
+void cleanExit(int) { exit(0); }
+
+map<string, string> mime_types = {
+	{".gif", "image/gif"},
+	{".jpeg", "image/jpeg"},
+	{".mp3", "audio/mpeg3"},
+	{".pdf", "application/pdf"}
+};
+
+string get_mime_type(string file_path) {
+	size_t pos = file_path.find_last_of(".");
+	if(pos != string::npos) {
+		string ext = file_path.substr(pos);
+		if(mime_types.find(ext) != mime_types.end()) {
+			return mime_types[ext];
+		}
+	}
+	return "text/plain";
+}
+
+string get_response_header(string file_path) {
+	stringstream ss;
+	ss << "HTTP/1.0 200 OK\r\nContent-Type: " << get_mime_type(file_path) << "\r\n\r\n";
+	return ss.str();
+}
+
+void send_response(int their_sockfd, string file_path) {
+	string response_header = get_response_header(file_path);
+
+	ifstream ifs(file_path);
+
+	if(ifs.is_open()) {
+		string line;
+		while(getline(ifs, line)) {
+			response_header += line + "\n";
+		}
+		ifs.close();
+	} else {
+		// if ifstream is not opened, return not found page
+		response_header = "HTTP/1.0 404 Not Found\r\n\r\n";
+	}
+
+	send(their_sockfd, response_header.c_str(), response_header.length(), 0);
+}
 
 int main(int argc, char* argv[])
 {
 	// Check the argument
 	if(argc < 2) {
-		perror("Press the port (1025~)\n");
+		fprintf(stderr, "Press the port (1025~)\n");
 		exit(1);
 	}
+
+	// Add the signal function
+	signal(SIGTERM, cleanExit);
+	signal(SIGINT, cleanExit);
 
 	// Put the value of argument
 	//const char* my_ip = "127.0.0.1"; // Configure it to be Loop-back IP
@@ -22,7 +77,7 @@ int main(int argc, char* argv[])
 
 	// Making socket with IPv4 and TCP
 	int my_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	int new_fd;
+	int their_sockfd;
 
 	// If could not create a socket, Return error message
 	if(my_sockfd < 0) {
@@ -32,7 +87,7 @@ int main(int argc, char* argv[])
 
 	// Make the struct sockaddr_in to initialize the IP address
 	struct sockaddr_in my_sockaddr_in, their_sockaddr_in;
-	int sin_size;
+	int their_sin_size;
 	
 	bzero(&my_sockaddr_in, sizeof(struct sockaddr_in));
 	my_sockaddr_in.sin_family = AF_INET;
@@ -40,14 +95,6 @@ int main(int argc, char* argv[])
 
 	// InADDR_ANY allows clients to connect to any one of the host's IP address
 	my_sockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
-	
-	// Transfer IP address into sockaddr_in struct
-	/*
-	if(inet_pton(AF_INET, my_ip, &my_sockaddr_in.sin_addr) != 1) {
-		perror("Could not transfer IP\n");
-		exit(1);
-	}
-	*/
 
 	// Bind into the specific IP and port
 	if(bind(my_sockfd, (struct sockaddr*)&my_sockaddr_in, sizeof(my_sockaddr_in)) == -1) {
@@ -55,23 +102,47 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
-	// Listen from my socket
+	// Listen from my socket with in BACKLOG connections simultaneously
 	if(listen(my_sockfd, BACKLOG) == -1) {
 		perror("Could not listen\n");
 		exit(1);
 	}
 
-	// Accept connecting from client
 	while(1) {
-		sin_size = sizeof(struct sockaddr_in);
+		their_sin_size = sizeof(struct sockaddr_in);
 		
-		if((new_fd = accept(my_sockfd, (struct sockaddr*) &their_sockaddr_in, (socklen_t*)  &sin_size)) == -1) {
-			perror("Could not accept");
+		// Accept connecting from client
+		if((their_sockfd = accept(my_sockfd, (struct sockaddr*) &their_sockaddr_in, (socklen_t*)  &their_sin_size)) == -1) {
+			perror("Could not accept. Try reconnect.");
 			continue;
 		}
 
 		printf("server: got connection from %s\n", inet_ntoa(their_sockaddr_in.sin_addr));
+
+		// Get the header information
+		char buffer[1024];
+		if(read(their_sockfd, buffer, 1024) < 0) {
+			fprintf(stderr, "Nothing received\n");
+		}
+
+		// Store the header information on each string object
+		stringstream ss(buffer);
+		string request_method, file_path, http_version;
+		ss >> request_method >> file_path >> http_version;
+		
+		// Print the request message
+		cout << request_method << " " <<  file_path << " " << http_version << endl;
+
+		// Send the response message
+		if (request_method == "GET") {
+			send_response(their_sockfd, file_path);
+		}
+
+		// Close the client socket
+		close(their_sockfd);
 	}
+
+	close(my_sockfd);
 
 	return 0;
 }
