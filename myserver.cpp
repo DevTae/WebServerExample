@@ -25,12 +25,14 @@ map<string, string> mime_types = {
 
 string get_mime_type(string file_path) {
 	size_t pos = file_path.find_last_of(".");
+
 	if(pos != string::npos) {
 		string ext = file_path.substr(pos);
 		if(mime_types.find(ext) != mime_types.end()) {
 			return mime_types[ext];
 		}
 	}
+
 	return "text/plain";
 }
 
@@ -43,9 +45,10 @@ string get_response_header(string file_path) {
 void send_response(int their_sockfd, string file_path) {
 	string response_header = get_response_header(file_path);
 
-	ifstream ifs(file_path);
-
+	ifstream ifs(file_path.substr(1));
+	
 	if(ifs.is_open()) {
+		// if ifstream is opened, return file contents
 		string line;
 		while(getline(ifs, line)) {
 			response_header += line + "\n";
