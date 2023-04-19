@@ -4,6 +4,7 @@
 #include <string.h>
 #include <signal.h>
 #include <map>
+#include <vector>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -60,6 +61,18 @@ void send_response(int their_sockfd, string file_path) {
 	}
 
 	send(their_sockfd, response_header.c_str(), response_header.length(), 0);
+}
+
+vector<string> split(string input, char delimeter) {
+	vector<string> result;
+	stringstream ss(input);
+	string temp;
+	
+	while(getline(ss, temp, delimeter)) {
+		result.push_back(temp);
+	}
+
+	return result;
 }
 
 int main(int argc, char* argv[])
@@ -122,21 +135,35 @@ int main(int argc, char* argv[])
 
 		printf("server: got connection from %s\n", inet_ntoa(their_sockaddr_in.sin_addr));
 
-		// Get the header information
-		char buffer[1024];
-		if(read(their_sockfd, buffer, 1024) < 0) {
+		// Get the request header information
+		char buffer[8190];
+		if(read(their_sockfd, buffer, 8190) < 0) {
 			fprintf(stderr, "Nothing received\n");
 		}
 
 		// Store the header information on each string object
 		stringstream ss(buffer);
+		string request_header = "";
 		string request_method, file_path, http_version;
-		ss >> request_method >> file_path >> http_version;
+		string line;
+		bool isFirstLine = true;
+
+		while(getline(ss, line)) {
+			if(isFirstLine) {
+				vector<string> result = split(line, ' ');
+				request_method = result[0];
+				file_path = result[1];
+				http_version = result[2];
+				isFirstLine = false;
+			}
+			request_header.append(line);
+			request_header.append("\n");
+		}
 		
 		// Print the request message
-		cout << request_method << " " <<  file_path << " " << http_version << endl;
+		cout << request_header;
 
-		// Send the response message
+		// Send the response message if the request method is GET
 		if (request_method == "GET") {
 			send_response(their_sockfd, file_path);
 		}
