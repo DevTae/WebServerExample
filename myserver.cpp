@@ -1,3 +1,11 @@
+/*
+ * Copyright DevTae@2023 all rights reserved.
+ * 
+ * This is the code about the web server project assignment of Computer Network Lecture
+ * Submitter : Department of Computer Science and Engineering 2019061658 Kim Taehyeon
+ * 제출자 : 컴퓨터학부 2019061658 김태현
+ */
+
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
