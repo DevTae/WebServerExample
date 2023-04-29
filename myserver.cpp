@@ -23,8 +23,10 @@
 
 using namespace std;
 
+// If the signal 'SIGINT' and 'SIGTERM', this function will be called.
 void cleanExit(int) { exit(0); }
 
+// These are the supported mime_types in this web server
 map<string, string> mime_types = {
 	{".gif", "image/gif"},
 	{".jpeg", "image/jpeg"},
@@ -32,28 +34,36 @@ map<string, string> mime_types = {
 	{".pdf", "application/pdf"}
 };
 
+// Return the MIME type as like 'image/jpeg'
 string get_mime_type(string file_path) {
+	// Find the last index of '.'
 	size_t pos = file_path.find_last_of(".");
 
 	if(pos != string::npos) {
 		string ext = file_path.substr(pos);
+
+		// if ext is in keys of mime_types, add mime_types[ext] on Content-Type
 		if(mime_types.find(ext) != mime_types.end()) {
 			return mime_types[ext];
 		}
 	}
 
+	// if it is not found, add "text/plain" on Content-Type
 	return "text/plain";
 }
 
+// Return the response header with the HTTP version, status code and MIME type
 string get_response_header(string file_path) {
 	stringstream ss;
 	ss << "HTTP/1.0 200 OK\r\nContent-Type: " << get_mime_type(file_path) << "\r\n\r\n";
 	return ss.str();
 }
 
+// Return the response header with the HTTP version, status code, MIME type and the file data
 void send_response(int their_sockfd, string file_path) {
 	string response_header = get_response_header(file_path);
 
+	// the file_path is "/{filename}.{file_extension}", so we have to use file_path.substr(1)
 	ifstream ifs(file_path.substr(1));
 	
 	if(ifs.is_open()) {
@@ -71,6 +81,7 @@ void send_response(int their_sockfd, string file_path) {
 	send(their_sockfd, response_header.c_str(), response_header.length(), 0);
 }
 
+// the split function
 vector<string> split(string input, char delimeter) {
 	vector<string> result;
 	stringstream ss(input);
@@ -157,6 +168,8 @@ int main(int argc, char* argv[])
 		bool isFirstLine = true;
 
 		while(getline(ss, line)) {
+			// The first line is consists of the request method, file path and http version.
+			// Therefore, It is essential to get informations from first line
 			if(isFirstLine) {
 				vector<string> result = split(line, ' ');
 				request_method = result[0];
